@@ -1,0 +1,129 @@
+tosca_definitions_version: cloudify_dsl_1_1
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/3.2/types.yaml
+
+plugins:
+  windows_host_plugin:
+    source: windows-host-plugin
+    executor: host_agent
+
+node_types:
+  cloudify.windows.nodes.Server:
+    derived_from: cloudify.nodes.Compute
+    interfaces:
+      cloudify.interfaces.worker_installer:
+        install: windows_agent_installer.windows_agent_installer.tasks.install
+        start: windows_agent_installer.windows_agent_installer.tasks.start
+        stop: windows_agent_installer.windows_agent_installer.tasks.stop
+        uninstall: windows_agent_installer.windows_agent_installer.tasks.uninstall
+        restart: windows_agent_installer.windows_agent_installer.tasks.restart
+      cloudify.interfaces.plugin_installer:
+        install: windows_plugin_installer.windows_plugin_installer.tasks.install
+
+node_templates:
+  host:
+    type: cloudify.windows.nodes.Server
+    properties:
+      install_agent: true
+      ip: 192.168.33.21
+    interfaces:
+      cloudify.interfaces.worker_installer:
+        install:
+          inputs:
+            cloudify_agent: &CLOUDIFY_AGENT
+              user: Administrator
+              password: R2Preview!
+        start:
+          inputs:
+            cloudify_agent: *CLOUDIFY_AGENT
+
+        stop:
+          inputs:
+            cloudify_agent: *CLOUDIFY_AGENT
+        uninstall:
+          inputs:
+            cloudify_agent: *CLOUDIFY_AGENT
+        restart:
+          inputs:
+            cloudify_agent: *CLOUDIFY_AGENT
+      cloudify.interfaces.plugin_installer:
+        install:
+          inputs:
+            cloudify_agent: *CLOUDIFY_AGENT
+  mongod:
+    type: cloudify.nodes.ApplicationModule
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: scripts/install_mongo.ps1
+          inputs:
+            process:
+              command_prefix: powershell
+      cloudify.interfaces.lifecycle:
+        start:
+          implementation: scripts/start_mongo.ps1
+          inputs:
+            process:
+              command_prefix: powershell
+        stop:
+          implementation: scripts/stop_mongo.ps1
+          inputs:
+            process:
+              command_prefix: powershell
+        delete:
+          implementation: scripts/uninstall_mongo.ps1
+          inputs:
+            process:
+              command_prefix: powershell
+    relationships:
+      -  type: cloudify.relationships.contained_in
+         target: host
+  nodejs:
+    type: cloudify.nodes.ApplicationModule
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: scripts/install_node.ps1
+          inputs:
+            process:
+              command_prefix: powershell
+        delete:
+          implementation: scripts/uninstall_node.ps1
+          inputs:
+            process:
+              command_prefix: powershell
+    relationships:
+      -  type: cloudify.relationships.contained_in
+         target: host
+  nodecellar:
+    type: cloudify.nodes.ApplicationModule
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: scripts/install_nodecellar.ps1
+          inputs:
+            process:
+              command_prefix: powershell
+        start:
+          implementation: scripts/start_nodecellar.ps1
+          inputs:
+            process:
+              command_prefix: powershell
+        stop:
+          implementation: scripts/stop_nodecellar.ps1
+          inputs:
+            process:
+              command_prefix: powershell
+        delete:
+          implementation: scripts/uninstall_nodecellar.ps1
+          inputs:
+            process:
+              command_prefix: powershell
+    relationships:
+      -  type: cloudify.relationships.contained_in
+         target: host
+      -  type: cloudify.relationships.connected_to
+         target: mongod
+      -  type: cloudify.relationships.connected_to
+         target: nodejs
